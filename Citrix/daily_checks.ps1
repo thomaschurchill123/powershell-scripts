@@ -1,16 +1,10 @@
-<#
-	 .SYNOPSIS
-			 Create and email report for daily Citrix infrastructure checks.
-
-	 .DESCRIPTION
-			 Collects information on critical Citrix services and database connections and
-       formats the information into a HTML coded email to be distributed to key members of staff.
-
-	 .NOTES
-	 		 Version:        2.0
-			 Author:         Thomas Churchill
-			 Creation Date:  28/02/19
-			 Purpose/Change: Added run down of delivery groups.
+﻿<#
+.SYNOPSIS
+    Citrix Daily platform checks.
+.Description
+    Checks core infrastructure for key services etc.. 
+.Notes
+    Author - Thomas Churchill - Date - 18/02/19 - Version 0.2
 #>
 #Functions
 function Test-Services{
@@ -30,12 +24,12 @@ param([string[]]$services,[string]$computername)
 }
 function Get-DGTotalServers{
             param([string]$DGID,[string]$DCName)
-            Get-BrokerMachine -AdminAddress $DCName | Where-Object {$_.DesktopGroupUid -eq "$DGID"}
+            Get-BrokerMachine -AdminAddress $DCName | Where {$_.DesktopGroupUid -eq "$DGID"}
         }
-# Load snapins
-if ((Get-PSSnapin "Citrix.Broker.Admin.*" -EA silentlycontinue) -eq $null) {
-try { Add-PSSnapin Citrix.Broker.Admin.* -ErrorAction Stop }
-catch { write-error "Error Get-PSSnapin Citrix.Broker.Admin.* Powershell snapin"; Return }
+# Load only the snap-ins, which are used
+if ((Get-PSSnapin "Citrix.*" -EA silentlycontinue) -eq $null) {
+try { Add-PSSnapin Citrix.* -ErrorAction Stop }
+catch { write-error "Error Get-PSSnapin Citrix.* Powershell snapin"; Return }
 }
 #Variables
 $ErrorActionPreference = 'Stop'
@@ -43,19 +37,20 @@ $server_list = Import-Csv -Path C:\Scripts\CoreServerList\CoreServerList.csv
 $customer_matrix = Import-Csv -Path C:\Scripts\CustomerMatrix\customermatrix.csv
 $date = Get-Date -Format "dd/MM/yyyy HH:mm"
 $log_date = Get-Date -Format yyyy_MM_dd_HH_mm
-$log_path = "C:\scripts\daily_checks\daily_checks_$log_date.log"
-$email_params = @{
-  From = "SendingEmailAddress";
-  To = "Recipients";
-  Subject = "Citrix Daily Checks - $date";
-  BodyAsHtml = @"
+$log_name = "daily_checks_$log_date.log"
+$log_path = "C:\scripts\daily_checks\"
+$email_params = @{ 
+From = "Citrix.Reporting@sentinel.scc.com";
+To = "SentinelCitrixTeam@sentinel.scc.com","service.desk@sentinel.scc.com"; 
+Subject = "Citrix Daily Checks - $date"; 
+BodyAsHtml = @"
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml">
  <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
   <title>Citrix Daily Checks</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
- </head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/> 
+ </head> 
 </html>
 <body style="margin: 0; padding:0;">
 <font face="Tahoma">
@@ -91,10 +86,10 @@ $email_params = @{
                         <td width="250" valign="top" align="center">
                           <font face="Tahoma"><b>Services</b>
                         </td>
-                      </tr>
-"@;
-  SmtpServer = "smtpserverip";
-  Attachments = "C:\scripts\daily_checks\citrix-logo-black.png"}
+                      </tr>                     
+"@; 
+SmtpServer = "10.250.160.134";
+Attachments = "C:\scripts\daily_checks\citrix-logo-black.png"}
 $delivery_controller_services = (
 "CitrixBrokerService",
 "CitrixADIdentityService",
@@ -116,7 +111,7 @@ $license_services = (
 "CitrixWebServicesforLicensing"
 )
 #Main script
-Start-Transcript -Path $log_path
+Start-Transcript -Path (($log_path)+($log_name))
 Write-Host "======================="
 Write-Host "Script starting @ $log_date"
 Write-Host "======================="
@@ -247,7 +242,7 @@ $email_params.BodyAsHtml +=@"
 Write-Host -ForegroundColor Yellow "Getting Database information from Delivery Controllers"
 foreach($dc in $server_list.Where({$_.Role -eq 'Delivery_Controller'})){
     $dc_fqdn = $dc.FQDN
-    $db_ifno = Get-BrokerDBConnection -AdminAddress $dc_fqdn
+    $db_ifno = Get-BrokerDBConnection -AdminAddress $dc_fqdn 
     if($db_ifno){
         Write-Host -ForegroundColor Green "Successfully queried DB info from $dc_fqdn"
         $email_params.BodyAsHtml +=@"
@@ -302,7 +297,7 @@ $email_params.BodyAsHtml += @"
                             <td width="250" valign="top" align="center">
                             <font face ="Tahoma"><b>Maintenance Mode</b>
                         </tr>
-
+                          
 "@
 #End of Database connectivity checks
 #Delivery Group checks
@@ -313,8 +308,8 @@ foreach($customer in $customer_matrix){
     $customer_delivery_controller = $customer.DeliveryController
     $customer_delivery_group_name = $customer.DeliveryGroup
     $delivery_group_total = (Get-DGTotalServers -DCName $customer_delivery_controller -DGID $customer_deliverygroup_id).count
-    $unregistered_count = (Get-DGTotalServers -DCName $customer_delivery_controller -DGID $customer_deliverygroup_id | Where-Object {$_.RegistrationState -eq "Unregistered"}).count
-    $maintenance_count = (Get-DGTotalServers -DCName $customer_delivery_controller -DGID $customer_deliverygroup_id | Where-Object {$_.InMaintenanceMode -eq "True"}).count
+    $unregistered_count = (Get-DGTotalServers -DCName $customer_delivery_controller -DGID $customer_deliverygroup_id | where {$_.RegistrationState -eq "Unregistered"}).count
+    $maintenance_count = (Get-DGTotalServers -DCName $customer_delivery_controller -DGID $customer_deliverygroup_id | where {$_.InMaintenanceMode -eq "True"}).count
     if($unregistered_count -gt 0){
         Write-Host -ForegroundColor Red "$customer_name has $unregistered_count unregistered machines in $customer_delivery_group_name"
         $email_params.BodyAsHtml +=@"
@@ -364,7 +359,7 @@ $email_params.BodyAsHtml +=@"
             </td>
           </tr>
           <tr>
-            <td bgcolor="#ee4c50" style="padding: 40px">
+            <td bgcolor="#70bbd9" style="padding: 40px">
               <font face="Tahoma">Diagnosic information can be found in:
               $script_path
             </td>
@@ -376,12 +371,11 @@ $email_params.BodyAsHtml +=@"
   </font>
 </body>
 "@
-Send-MailMessage @email_params
-
+Send-MailMessage -To $email_params.To -From $email_params.From -Subject $email_params.Subject -BodyAsHtml $email_params.BodyAsHtml -SmtpServer $email_params.SmtpServer -Attachments $email_params.Attachments
 #Log Clean Up
 Write-Host -ForegroundColor Yellow "Checking for old logs.."
-$limit = (Get-Date).AddDays(-93)
-$old_logs_check = Get-ChildItem -Path $log_path *.log | Where-Object {$_.LastWriteTime -lt $limit}
+$limit = (Get-Date).AddDays(-7)
+$old_logs_check = Get-ChildItem -Path $log_path *.log | where {$_.LastWriteTime -lt $limit}
 if($old_logs_check){
     Write-Host -ForegroundColor Yellow "Old log files detected, deleting..."
     try {
