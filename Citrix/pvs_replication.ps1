@@ -8,9 +8,9 @@
       Any vDisk versions that are set to maintenance will be exluded too, as generally changes are in progress on these versions,
       complete the required changes and mark the version as either production or test before replicating.
 
-   .FUNCTION
-      Log
-      Write a message to a log file to detail script actions for later review.
+   	.FUNCTION
+      	Log
+      	Write a message to a log file to detail script actions for later review.
 
 
 	 .LINK
