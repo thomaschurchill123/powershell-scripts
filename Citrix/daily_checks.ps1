@@ -88,7 +88,7 @@ BodyAsHtml = @"
                         </td>
                       </tr>                     
 "@; 
-SmtpServer = "10.250.160.134";
+SmtpServer = "SMTPSERVER";
 Attachments = "C:\scripts\daily_checks\citrix-logo-black.png"}
 $delivery_controller_services = (
 "CitrixBrokerService",
